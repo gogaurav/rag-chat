@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+faiss-cpu
+tiktoken
+litellm
+pydantic
+sentence-transformers

@@ -1,0 +1,63 @@
+# ----------------------
+# Python
+# ----------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.env
+.env.*
+
+# ----------------------
+# Virtual environments
+# ----------------------
+venv/
+.venv/
+env/
+
+# ----------------------
+# HuggingFace / ML caches
+# ----------------------
+.cache/
+.cache/*
+**/.cache/
+**/.huggingface/
+**/huggingface/
+**/.sentence_transformers/
+
+# ----------------------
+# Vector stores / indexes
+# ----------------------
+vectorstores/
+*.faiss
+*.index
+
+# ----------------------
+# Data Corpus
+# ----------------------
+gitlab_handbook/
+gitlab_handbook_cleaned/
+
+# ----------------------
+# Streamlit
+# ----------------------
+.streamlit/
+
+# ----------------------
+# OS / Editor
+# ----------------------
+.DS_Store
+.vscode/
+.idea/
+
+# ----------------------
+# Logs
+# ----------------------
+*.log
+logs/
+
+# ----------------------
+# Temporary files
+# ----------------------
+*.tmp
+*.swp
