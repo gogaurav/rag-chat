@@ -22,6 +22,25 @@ st.set_page_config(
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "last_sources" not in st.session_state:
+    st.session_state.last_sources = []
+
+if "last_prompt" not in st.session_state:
+    st.session_state.last_prompt = ""
+
+# ---------------------------
+# Sidebar (Sources Panel)
+# ---------------------------
+
+st.sidebar.title("📚 Retrieved Sources")
+st.sidebar.caption("Documents used to generate the answer")
+
+if st.session_state.last_sources:
+    for src in st.session_state.last_sources:
+        st.sidebar.markdown(f"- `{src}`")
+else:
+    st.sidebar.info("Ask a question to see sources here.")
+
 # ---------------------------
 # Header
 # ---------------------------
@@ -71,22 +90,41 @@ if user_input:
                     timeout=60
                 )
                 response.raise_for_status()
-                answer = response.json()["answer"]
+
+                data = response.json()
+                answer = data.get("answer", "No answer returned.")
+                sources = data.get("sources", [])
+                prompt_text = data.get("prompt", "")
+
+                st.session_state.last_sources = sources
+                st.session_state.last_prompt = prompt_text
 
             except Exception as e:
                 answer = f"⚠️ Error contacting server: {e}"
+                st.session_state.last_sources = []
 
-        # Typing animation (optional but nice)
+        # Typing animation
         placeholder = st.empty()
-        typed_text = ""
-        for char in answer:
-            typed_text += char
-            placeholder.markdown(typed_text)
-            time.sleep(0.005)
+        typed = ""
+        for ch in answer:
+            typed += ch
+            placeholder.markdown(typed)
+            time.sleep(0.004)
 
-    st.session_state.messages.append(
-        {"role": "assistant", "content": answer}
-    )
+    with st.expander("🧠 View full prompt sent to GPT-4o", expanded=False):
+        if st.session_state.last_prompt:
+            st.text_area(
+                label="Prompt",
+                value=st.session_state.last_prompt,
+                height=350
+            )
+            st.caption("This is the exact prompt sent to the LLM (question + retrieved context).")
+        else:
+            st.info("Ask a question to view the generated prompt.")
+
+        st.session_state.messages.append(
+            {"role": "assistant", "content": answer}
+        )
 
 # ---------------------------
 # Footer
@@ -94,5 +132,5 @@ if user_input:
 
 st.divider()
 st.caption(
-    "Powered by FAISS + LangChain + LiteLLM | Built as a RAG demo"
+    "Powered by FAISS + LangChain + LiteLLM | Transparent RAG with source attribution"
 )

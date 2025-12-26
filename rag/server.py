@@ -19,6 +19,8 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
+    sources: list[str]
+    prompt: str
 
 
 # ---------------------------
@@ -30,7 +32,11 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.post("/ask", response_model=AskResponse)
+@app.post("/ask",
+        #    response_model=AskResponse
+           )
 def ask_question(req: AskRequest):
     answer = ask_rag(req.question)
-    return AskResponse(answer=answer)
+    return answer
+    # return AskResponse(answer=answer)
+

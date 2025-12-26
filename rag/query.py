@@ -1,3 +1,5 @@
+from typing import List, Dict
+
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -7,20 +9,20 @@ from langchain.schema.output_parser import StrOutputParser
 
 import litellm
 
-# ---------------------------
-# Config
-# ---------------------------
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
 
 VECTORSTORE_PATH = "../vectorstores/gitlab_faiss"
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-LLM_MODEL = "gpt-4o-mini"
+# LLM_MODEL = "gpt-4o-mini"
+LLM_MODEL = "gpt-5"
 TEMPERATURE = 0.0
 TOP_K = 4
 
-
-# ---------------------------
-# Load Embeddings & Retriever
-# ---------------------------
+# --------------------------------------------------
+# Load embeddings and vectorstore (ONCE)
+# --------------------------------------------------
 
 embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
 
@@ -32,10 +34,9 @@ db = FAISS.load_local(
 
 retriever = db.as_retriever(search_kwargs={"k": TOP_K})
 
-
-# ---------------------------
-# Prompt
-# ---------------------------
+# --------------------------------------------------
+# Prompt template (SINGLE SOURCE)
+# --------------------------------------------------
 
 RAG_PROMPT = """
 You are an AI assistant answering questions using ONLY the provided context.
@@ -57,57 +58,105 @@ Answer:
 
 prompt = PromptTemplate.from_template(RAG_PROMPT)
 
+# --------------------------------------------------
+# LiteLLM call (REUSED)
+# --------------------------------------------------
 
-# ---------------------------
-# LiteLLM Runnable
-# ---------------------------
-
-def llm_call(inputs: dict) -> str:
+def llm_call(prompt_text: str) -> str:
     response = litellm.completion(
         model=LLM_MODEL,
-        temperature=TEMPERATURE,
-        messages=[{"role": "user", "content": inputs["prompt"]}],
+        # temperature=TEMPERATURE,
+        messages=[{"role": "user", "content": prompt_text}],
     )
     return response["choices"][0]["message"]["content"]
 
+# --------------------------------------------------
+# Document formatting (REUSED)
+# --------------------------------------------------
 
-llm_runnable = RunnableLambda(llm_call)
+def format_docs(docs) -> Dict[str, object]:
+    """
+    Returns:
+    {
+        "context": str,
+        "sources": List[str]
+    }
+    """
+    context_chunks = []
+    sources = []
 
+    for d in docs:
+        context_chunks.append(
+            f"{d.page_content}\n(Source: {d.metadata.get('source', 'unknown')})"
+        )
+        if "source" in d.metadata:
+            sources.append(d.metadata["source"])
 
-# ---------------------------
-# Build RAG Pipeline
-# ---------------------------
+    return {
+        "context": "\n\n".join(context_chunks),
+        "sources": sorted(set(sources))
+    }
+
+# --------------------------------------------------
+# LCEL RAG pipeline (SINGLE PIPELINE)
+# --------------------------------------------------
 
 def build_rag_chain():
+    """
+    Returns a runnable that outputs:
+    {
+        "answer": str,
+        "sources": List[str]
+    }
+    """
 
-    def format_docs(docs):
-        return "\n\n".join(
-            f"{d.page_content}\n(Source: {d.metadata['source']})"
-            for d in docs
-        )
+    def build_prompt(inputs: dict):
+        return {
+            "prompt": prompt.format(
+                question=inputs["question"],
+                context=inputs["context"]
+            ),
+            "sources": inputs["sources"]
+        }
+
+    
+    def generate_answer(inputs: dict):
+        answer = llm_call(inputs["prompt"])
+        return {
+            "answer": answer,
+            "sources": inputs["sources"],
+            "prompt": inputs["prompt"]   # 👈 expose full prompt
+        }
+
 
     return (
         {
-            "context": retriever | RunnableLambda(format_docs),
+            "docs": retriever,
             "question": RunnablePassthrough(),
         }
-        | RunnableLambda(lambda x: {
-            "prompt": prompt.format(
-                question=x["question"],
-                context=x["context"]
-            )
-        })
-        | llm_runnable
-        | StrOutputParser()
+        | RunnableLambda(
+            lambda x: {
+                "question": x["question"],
+                **format_docs(x["docs"])
+            }
+        )
+        | RunnableLambda(build_prompt)
+        | RunnableLambda(generate_answer)
     )
 
-
+# Build once
 rag_chain = build_rag_chain()
 
+# --------------------------------------------------
+# Public API function (REUSED EVERYWHERE)
+# --------------------------------------------------
 
-# ---------------------------
-# Public function
-# ---------------------------
-
-def ask_rag(question: str) -> str:
+def ask_rag(question: str) -> Dict[str, object]:
+    """
+    Returns:
+    {
+        "answer": str,
+        "sources": List[str]
+    }
+    """
     return rag_chain.invoke(question)
